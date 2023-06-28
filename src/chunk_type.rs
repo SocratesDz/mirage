@@ -38,7 +38,7 @@ impl TryFrom<[u8; 4]> for ChunkType {
     fn try_from(value: [u8; 4]) -> Result<Self, Self::Error> {
         let is_valid = value
             .iter()
-            .all(|&x| (65..=90).contains(&x) || (97..=122).contains(&x));
+            .all(|&x| x.is_ascii_alphabetic());
         if is_valid {
             Ok(ChunkType { code: value })
         } else {
