@@ -1,8 +1,8 @@
 use std::fmt::Display;
-use std::str::{FromStr, from_utf8};
+use std::str::{from_utf8, FromStr};
 
 #[derive(Debug)]
-struct ChunkType {
+pub struct ChunkType {
     code: [u8; 4],
 }
 
@@ -20,11 +20,11 @@ impl ChunkType {
     }
 
     fn is_public(&self) -> bool {
-        self.code[1].is_ascii_uppercase() 
+        self.code[1].is_ascii_uppercase()
     }
 
     fn is_reserved_bit_valid(&self) -> bool {
-        self.code[2].is_ascii_uppercase() 
+        self.code[2].is_ascii_uppercase()
     }
 
     fn is_safe_to_copy(&self) -> bool {
@@ -36,9 +36,7 @@ impl TryFrom<[u8; 4]> for ChunkType {
     type Error = &'static str;
 
     fn try_from(value: [u8; 4]) -> Result<Self, Self::Error> {
-        let is_valid = value
-            .iter()
-            .all(|&x| x.is_ascii_alphabetic());
+        let is_valid = value.iter().all(|&x| x.is_ascii_alphabetic());
         if is_valid {
             Ok(ChunkType { code: value })
         } else {
