@@ -1,4 +1,9 @@
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    io::{BufReader, Read},
+};
+
+use crc::{Crc, CRC_32_ISO_HDLC};
 
 use crate::chunk_type::ChunkType;
 
@@ -11,7 +16,21 @@ pub struct Chunk {
 
 impl Chunk {
     fn new(chunk_type: ChunkType, data: Vec<u8>) -> Chunk {
-        todo!()
+        let length = u32::try_from(data.len()).unwrap();
+        let crc_algorithm = Crc::<u32>::new(&CRC_32_ISO_HDLC);
+        let crc_data: Vec<u8> = chunk_type
+            .bytes()
+            .iter()
+            .chain(data.iter())
+            .cloned()
+            .collect();
+
+        Chunk {
+            length,
+            chunk_type,
+            data,
+            crc: crc_algorithm.checksum(crc_data.as_slice()),
+        }
     }
 
     fn length(&self) -> u32 {
@@ -30,20 +49,53 @@ impl Chunk {
         self.crc
     }
 
-    fn data_as_string(&self) -> Result<String, String> {
-        todo!()
+    fn data_as_string(&self) -> Result<String, FromUtf8Error> {
+        String::from_utf8(self.data.clone())
     }
 
     fn as_bytes(&self) -> Vec<u8> {
-        todo!()
+        self.length()
+            .to_be_bytes()
+            .iter()
+            .chain(self.chunk_type.bytes().iter())
+            .chain(self.data.iter())
+            .chain(self.crc().to_be_bytes().iter())
+            .copied()
+            .collect()
     }
 }
 
+#[derive(Debug)]
+pub enum ChunkError {
+    InvalidChecksum,
+}
+
 impl TryFrom<&[u8]> for Chunk {
-    type Error = &'static str;
+    type Error = ChunkError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        todo!()
+        let mut buffer = BufReader::new(value);
+
+        let mut length_bytes = [0; 4];
+        buffer.read_exact(&mut length_bytes).unwrap();
+        let length = usize::try_from(u32::from_be_bytes(length_bytes)).unwrap();
+
+        let mut chunk_type = [0; 4];
+        buffer.read_exact(&mut chunk_type).unwrap();
+
+        let mut data = vec![0u8; length];
+        buffer.read_exact(&mut data).unwrap();
+
+        let mut crc = Vec::<u8>::new();
+        buffer.read_to_end(&mut crc).unwrap();
+
+        let chunk = Self::new(ChunkType::try_from(chunk_type).unwrap(), data);
+
+        if chunk.crc.to_be_bytes() != crc.as_slice() {
+            Err(ChunkError::InvalidChecksum)
+        } else {
+            Ok(chunk)
+        }
     }
 }
 
@@ -52,7 +104,10 @@ impl Display for Chunk {
         write!(
             f,
             "Chunk {{ length: {}, chunk_type: {}, data: {:?}, crc: {} }}",
-            self.length, self.chunk_type, self.data, self.crc
+            self.length(),
+            self.chunk_type,
+            self.data,
+            self.crc()
         )
     }
 }

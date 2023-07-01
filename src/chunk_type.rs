@@ -7,51 +7,56 @@ pub struct ChunkType {
 }
 
 impl ChunkType {
-    fn bytes(&self) -> [u8; 4] {
+    pub fn bytes(&self) -> [u8; 4] {
         self.code
     }
 
-    fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         self.is_reserved_bit_valid()
     }
 
-    fn is_critical(&self) -> bool {
+    pub fn is_critical(&self) -> bool {
         self.code[0].is_ascii_uppercase()
     }
 
-    fn is_public(&self) -> bool {
+    pub fn is_public(&self) -> bool {
         self.code[1].is_ascii_uppercase()
     }
 
-    fn is_reserved_bit_valid(&self) -> bool {
+    pub fn is_reserved_bit_valid(&self) -> bool {
         self.code[2].is_ascii_uppercase()
     }
 
-    fn is_safe_to_copy(&self) -> bool {
+    pub fn is_safe_to_copy(&self) -> bool {
         self.code[3].is_ascii_lowercase()
     }
 }
 
+#[derive(Debug)]
+pub enum ChunkTypeError {
+    Invalid,
+}
+
 impl TryFrom<[u8; 4]> for ChunkType {
-    type Error = &'static str;
+    type Error = ChunkTypeError;
 
     fn try_from(value: [u8; 4]) -> Result<Self, Self::Error> {
         let is_valid = value.iter().all(|&x| x.is_ascii_alphabetic());
         if is_valid {
             Ok(ChunkType { code: value })
         } else {
-            Err("Invalid chunk type")
+            Err(ChunkTypeError::Invalid)
         }
     }
 }
 
 impl FromStr for ChunkType {
-    type Err = &'static str;
+    type Err = ChunkTypeError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let bytes = s.as_bytes();
         if bytes.len() != 4 {
-            Err("Invalid chunk type")
+            Err(ChunkTypeError::Invalid)
         } else {
             let code = [bytes[0], bytes[1], bytes[2], bytes[3]];
             ChunkType::try_from(code)
