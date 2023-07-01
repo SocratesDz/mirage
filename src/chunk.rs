@@ -1,6 +1,7 @@
 use std::{
     fmt::Display,
     io::{BufReader, Read},
+    string::FromUtf8Error,
 };
 
 use crc::{Crc, CRC_32_ISO_HDLC};
