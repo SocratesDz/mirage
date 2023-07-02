@@ -1,7 +1,11 @@
-use std::{ops::Index, str::from_utf8};
+use std::{
+    fmt::Display,
+    io::{BufRead, BufReader, Read},
+};
 
-use crate::{chunk::Chunk, chunk_type};
+use crate::chunk::Chunk;
 
+#[derive(Debug)]
 pub enum PngError {
     InvalidFile,
     ChunkNotFound,
@@ -34,7 +38,7 @@ impl Png {
             .find(|(_, c)| c.chunk_type().bytes() == chunk_type.as_bytes());
         match find {
             Some((index, _)) => Ok(self.chunks.remove(index)),
-            _ => Err(PngError::ChunkNotFound),
+            None => Err(PngError::ChunkNotFound),
         }
     }
 
@@ -54,14 +58,8 @@ impl Png {
 
     fn as_bytes(&self) -> Vec<u8> {
         self.header
-            .iter()
-            .chain(
-                self.chunks
-                    .iter()
-                    .map(|c| c.as_bytes().as_slice())
-                    .flatten(),
-            )
-            .cloned()
+            .into_iter()
+            .chain(self.chunks.iter().flat_map(|c| c.as_bytes()))
             .collect::<Vec<u8>>()
     }
 }
@@ -70,21 +68,61 @@ impl TryFrom<&[u8]> for Png {
     type Error = PngError;
 
     fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
-        // Assert first four bytes looking for header;
-        // * If wrong header, return an Error
-        // Make a BufReader, loop over it with the following operations:
-        // - Assert first chunk is of type IHDR
-        // - Assert last chunk is of type IEND
-        // - Get chunk
-        // - Calculate next slice based on the length and data
-        todo!()
+        const FILE_LAYOUT_BYTES: usize = 12;
+
+        let mut buffer = BufReader::new(value);
+
+        let mut header = [0u8; 8];
+        if buffer.read_exact(&mut header).is_err() {
+            return Err(PngError::InvalidFile);
+        }
+
+        if header != Png::STANDARD_HEADER {
+            return Err(PngError::InvalidFile);
+        }
+
+        let mut chunks: Vec<Chunk> = Vec::new();
+        loop {
+            let inner_buf = buffer.fill_buf().unwrap();
+            if inner_buf.is_empty() {
+                break;
+            }
+            if inner_buf.len() < FILE_LAYOUT_BYTES {
+                return Err(PngError::InvalidFile);
+            }
+            let length_bytes: [u8; 4] = inner_buf[0..4].try_into().unwrap();
+            let length = usize::try_from(u32::from_be_bytes(length_bytes)).unwrap();
+
+            let chunk_bytes = &inner_buf[0..length + FILE_LAYOUT_BYTES];
+
+            let chunk = match Chunk::try_from(chunk_bytes) {
+                Ok(c) => c,
+                Err(_) => return Err(PngError::InvalidFile),
+            };
+
+            chunks.push(chunk);
+
+            buffer.consume(length + FILE_LAYOUT_BYTES);
+        }
+        Ok(Png { header, chunks })
+    }
+}
+
+impl Display for Png {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Png {{ header: {:?}, chunks: {:?} }}",
+            self.header(),
+            self.chunks()
+        )
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chunk::Chunk;
+    use crate::chunk::{Chunk, ChunkError};
     use crate::chunk_type::ChunkType;
     use std::convert::TryFrom;
     use std::str::FromStr;
@@ -104,10 +142,8 @@ mod tests {
         Png::from_chunks(chunks)
     }
 
-    fn chunk_from_strings(chunk_type: &str, data: &str) -> Result<Chunk> {
-        use std::str::FromStr;
-
-        let chunk_type = ChunkType::from_str(chunk_type)?;
+    fn chunk_from_strings(chunk_type: &str, data: &str) -> Result<Chunk, ChunkError> {
+        let chunk_type = ChunkType::from_str(chunk_type).unwrap();
         let data: Vec<u8> = data.bytes().collect();
 
         Ok(Chunk::new(chunk_type, data))
